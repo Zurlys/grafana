@@ -11,20 +11,21 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/grafana/grafana/pkg/infra/log"
+	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/setting"
 	"github.com/grafana/grafana/pkg/util"
 	"github.com/grafana/grafana/pkg/util/errutil"
 )
 
 type BasicUserInfo struct {
-	Id            string
-	Name          string
-	Email         string
-	Login         string
-	Company       string
-	Role          string
-	GroupMappings []setting.OAuthGroupMapping
-	Groups        []string
+	Id             string
+	Name           string
+	Email          string
+	Login          string
+	Company        string
+	OrgMemberships map[int64]models.RoleType
+	Groups         []string
+	IsGrafanaAdmin *bool
 }
 
 type SocialConnector interface {
@@ -110,11 +111,11 @@ func NewOAuthService() {
 
 		groupMappingsFile := sec.Key("group_mappings_file").String()
 		if groupMappingsFile != "" {
-			groupMappingsConfig, err := readConfig(groupMappingsFile)
+			mappings, err := readConfig(groupMappingsFile)
 			if err != nil {
 				oauthLogger.Error("Failed to read group mappings file", "file", groupMappingsFile, "provider", name, "error", err)
 			} else {
-				info.GroupMappings = groupMappingsConfig.GroupMappings
+				info.GroupMappings = mappings
 			}
 		}
 
@@ -241,11 +242,14 @@ var GetOAuthProviders = func(cfg *setting.Cfg) map[string]bool {
 	return result
 }
 
-func readConfig(configFile string) (*setting.OAuthGroupMappingsConfig, error) {
-	result := &setting.OAuthGroupMappingsConfig{}
+func readConfig(configFile string) ([]setting.OAuthGroupMapping, error) {
+	type oauthGroupMappingsConfig struct {
+		GroupMappings []setting.OAuthGroupMapping `toml:"group_mappings"`
+	}
 
 	oauthLogger.Debug("Reading group mapping file", "file", configFile)
 
+	result := &oauthGroupMappingsConfig{}
 	_, err := toml.DecodeFile(configFile, result)
 	if err != nil {
 		return nil, errutil.Wrap("failed to load OAuth group mappings file", err)
@@ -255,12 +259,18 @@ func readConfig(configFile string) (*setting.OAuthGroupMappingsConfig, error) {
 		return nil, fmt.Errorf("OAuth enabled but no group mappings defined in config file")
 	}
 
-	// Validate role_attribute_path is set
+	// Validate
 	for _, groupMapping := range result.GroupMappings {
-		if groupMapping.RoleAttributePath == "" {
-			return nil, fmt.Errorf("OAuth group mapping require role_attribute_path to be set")
+		if groupMapping.Filter == "" {
+			return nil, fmt.Errorf("OAuth group mapping requires filter to be set")
+		}
+		if groupMapping.OrgID < 1 {
+			return nil, fmt.Errorf("OAuth group mapping requires org_id to be set")
+		}
+		if groupMapping.Role == "" {
+			return nil, fmt.Errorf("OAuth group mapping requires role to be set")
 		}
 	}
 
-	return result, nil
+	return result.GroupMappings, nil
 }

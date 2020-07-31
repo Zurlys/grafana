@@ -22,14 +22,10 @@ type OAuthInfo struct {
 }
 
 type OAuthGroupMapping struct {
-	RoleAttributePath string `toml:"role_attribute_path"`
-	Role              string
-	OrgID             int   `toml:"org_id"`
-	IsGrafanaAdmin    *bool `toml:"grafana_admin"`
-}
-
-type OAuthGroupMappingsConfig struct {
-	GroupMappings []OAuthGroupMapping `toml:"group_mappings"`
+	Filter         string `toml:"filter"`
+	Role           string `toml:"role"`
+	OrgID          int64  `toml:"org_id"`
+	IsGrafanaAdmin *bool  `toml:"grafana_admin"`
 }
 
 type OAuther struct {
